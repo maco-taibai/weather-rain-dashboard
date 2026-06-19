@@ -90,13 +90,14 @@ def inject_styles():
         }
 
         .block-container {
-            padding-top: 1rem;
+            padding-top: 0.25rem;
             padding-bottom: 2rem;
             max-width: 1480px;
         }
 
         div[data-testid="stHeader"] {
             background: transparent;
+            height: 0;
         }
 
         #MainMenu,
@@ -107,6 +108,10 @@ def inject_styles():
         .stDeployButton {
             display: none !important;
             visibility: hidden !important;
+        }
+
+        [data-testid="stAppViewBlockContainer"] {
+            padding-top: 0.25rem;
         }
 
         .dashboard-header {
