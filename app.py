@@ -99,6 +99,16 @@ def inject_styles():
             background: transparent;
         }
 
+        #MainMenu,
+        footer,
+        [data-testid="stToolbar"],
+        [data-testid="stDecoration"],
+        [data-testid="stDeployButton"],
+        .stDeployButton {
+            display: none !important;
+            visibility: hidden !important;
+        }
+
         .dashboard-header {
             border: 1px solid rgba(255, 255, 255, 0.78);
             background: linear-gradient(135deg, rgba(255, 255, 255, 0.88), rgba(225, 246, 255, 0.76));
