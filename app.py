@@ -34,7 +34,7 @@ DEFAULT_CITIES = [
 MAX_SELECTED_CITIES = 30
 HOURS = [f"{hour:02d}" for hour in range(24)]
 WEATHER_CACHE_TTL_SECONDS = 60 * 60 * 3
-WEATHER_FETCH_MAX_WORKERS = 6
+WEATHER_FETCH_MAX_WORKERS = 3
 
 load_dotenv(BASE_DIR / ".env")
 
@@ -689,12 +689,9 @@ def format_city_summary(selected_cities):
 
 def sync_dashboard_cities(cities, valid_cities):
     synced = clean_selected_cities(cities, valid_cities)
+    st.session_state["draft_selected_cities"] = synced
     st.session_state["pending_selected_cities"] = synced
     st.session_state["selected_cities"] = synced
-
-
-def update_pending_cities(cities, valid_cities):
-    st.session_state["pending_selected_cities"] = clean_selected_cities(cities, valid_cities)
 
 
 def render_city_selector(city_df):
@@ -711,80 +708,46 @@ def render_city_selector(city_df):
 
     with selector:
         valid_cities = city_df["city"].tolist()
-        st.session_state["pending_selected_cities"] = clean_selected_cities(
-            st.session_state.get("pending_selected_cities", selected_cities),
-            valid_cities,
-        )
         city_province_map = city_df.set_index("city")["province"].to_dict()
-        pending = clean_selected_cities(st.session_state["pending_selected_cities"], valid_cities)
+        if "draft_selected_cities" not in st.session_state:
+            st.session_state["draft_selected_cities"] = list(selected_cities)
 
-        st.caption(f"城市库：{city_df['province'].nunique()} 个省级区域，{len(city_df)} 个地级层级城市。待应用 {len(pending)}/{MAX_SELECTED_CITIES}。全部选好后点击“应用到看板”。")
+        draft = clean_selected_cities(st.session_state.get("draft_selected_cities", selected_cities), valid_cities)
+        if draft != st.session_state.get("draft_selected_cities"):
+            st.session_state["draft_selected_cities"] = draft
 
-        keyword = st.text_input("城市名称搜索", placeholder="输入城市名，例如：嘉兴、福州、深圳", key="city_keyword").strip()
-        search_results = city_df[city_df["city"].str.contains(keyword, case=False, na=False)] if keyword else city_df.head(0)
+        st.caption(f"城市库：{city_df['province'].nunique()} 个省级区域，{len(city_df)} 个地级层级城市。先在这里预选城市，确认后再应用到看板。")
 
-        st.markdown("**搜索结果**")
-        if keyword and search_results.empty:
-            st.info("没有找到匹配的地级城市。")
-        elif keyword:
-            for _, row in search_results.head(12).iterrows():
-                city = row["city"]
-                result_cols = st.columns([2.5, 1])
-                with result_cols[0]:
-                    st.write(f"{city}（{row['province']}）")
-                with result_cols[1]:
-                    already_selected = city in pending
-                    over_limit = len(pending) >= MAX_SELECTED_CITIES and not already_selected
-                    button_label = "已选" if already_selected else "添加"
-                    if st.button(button_label, key=f"add_search_{city}", disabled=already_selected or over_limit, use_container_width=True):
-                        update_pending_cities(pending + [city], valid_cities)
-                        st.rerun()
+        city_labels = {city: f"{city}（{city_province_map.get(city, '')}）" for city in valid_cities}
+        draft = st.multiselect(
+            "预选城市",
+            valid_cities,
+            format_func=lambda city: city_labels.get(city, city),
+            key="draft_selected_cities",
+            placeholder="输入城市名搜索，例如：嘉兴、福州、深圳",
+        )
+        draft = clean_selected_cities(draft, valid_cities)
 
-        st.markdown("**已选城市**")
-        if not pending:
-            st.info("请至少添加一个城市。")
-        else:
-            for start in range(0, len(pending), 3):
-                selected_cols = st.columns(3)
-                for col, city in zip(selected_cols, pending[start : start + 3]):
-                    with col:
-                        label = f"× {city}（{city_province_map.get(city, '')}）"
-                        if st.button(label, key=f"remove_pending_{city}", use_container_width=True):
-                            update_pending_cities([item for item in pending if item != city], valid_cities)
-                            st.rerun()
+        selected_clean = clean_selected_cities(selected_cities, valid_cities)
+        st.caption(f"待应用：{len(draft)}/{MAX_SELECTED_CITIES}；当前看板：{len(selected_clean)} 个城市。")
 
-        st.markdown("**按省份浏览添加**")
-        provinces = city_df["province"].dropna().drop_duplicates().tolist()
-        browse_province = st.selectbox("选择省份", provinces, key="browse_province", label_visibility="collapsed")
-        province_cities = city_df[city_df["province"] == browse_province]["city"].tolist()
-        for start in range(0, len(province_cities), 4):
-            browse_cols = st.columns(4)
-            for col, city in zip(browse_cols, province_cities[start : start + 4]):
-                with col:
-                    already_selected = city in pending
-                    over_limit = len(pending) >= MAX_SELECTED_CITIES and not already_selected
-                    button_label = "已选" if already_selected else city
-                    if st.button(button_label, key=f"add_browse_{city}", disabled=already_selected or over_limit, use_container_width=True):
-                        update_pending_cities(pending + [city], valid_cities)
-                        st.rerun()
+        if len(draft) > MAX_SELECTED_CITIES:
+            st.warning(f"当前最多支持选择 {MAX_SELECTED_CITIES} 个城市，请减少选择数量。")
 
         action_cols = st.columns([1, 1, 1.25])
         with action_cols[0]:
-            if st.button("清空选择", use_container_width=True):
-                update_pending_cities([], valid_cities)
+            if st.button("清空预选", use_container_width=True):
+                st.session_state["draft_selected_cities"] = []
                 st.rerun()
         with action_cols[1]:
             if st.button("恢复默认", use_container_width=True):
-                update_pending_cities([city for city in DEFAULT_CITIES if city in valid_cities], valid_cities)
+                st.session_state["draft_selected_cities"] = [city for city in DEFAULT_CITIES if city in valid_cities]
                 st.rerun()
         with action_cols[2]:
-            apply_disabled = pending == clean_selected_cities(selected_cities, valid_cities) or not pending
+            apply_disabled = draft == selected_clean or not draft or len(draft) > MAX_SELECTED_CITIES
             if st.button("应用到看板", type="primary", disabled=apply_disabled, use_container_width=True):
-                sync_dashboard_cities(pending, valid_cities)
+                sync_dashboard_cities(draft, valid_cities)
                 st.rerun()
-
-        if len(st.session_state["pending_selected_cities"]) > MAX_SELECTED_CITIES:
-            st.warning(f"当前最多支持选择 {MAX_SELECTED_CITIES} 个城市，请减少选择数量。")
 
 
 def normalize_forecast_time(value):
@@ -1035,6 +998,34 @@ def fetch_city_weather_rows(city, info, qweather_enabled, weatherapi_enabled):
     return city, blend_source_rows(source_rows, city), messages
 
 
+@st.cache_data(ttl=WEATHER_CACHE_TTL_SECONDS, show_spinner=False)
+def fetch_weather_batch(city_jobs, qweather_enabled, weatherapi_enabled):
+    all_rows = []
+    messages = []
+    if not city_jobs:
+        return pd.DataFrame(), messages
+
+    max_workers = min(WEATHER_FETCH_MAX_WORKERS, len(city_jobs))
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_map = {
+            executor.submit(fetch_city_weather_rows, city, info, qweather_enabled, weatherapi_enabled): city
+            for city, info in city_jobs
+        }
+        for future in as_completed(future_map):
+            city = future_map[future]
+            try:
+                _, city_rows, city_messages = future.result()
+                all_rows.extend(city_rows)
+                messages.extend(city_messages)
+            except Exception as exc:
+                messages.append(("warning", f"{city} 天气数据处理失败：{exc}"))
+
+    if not all_rows:
+        raise RuntimeError("没有获取到任何天气数据")
+
+    return pd.DataFrame(all_rows), messages
+
+
 def fetch_selected_weather(city_df, selected_cities):
     if not selected_cities:
         st.warning("请至少选择一个城市。")
@@ -1059,53 +1050,42 @@ def fetch_selected_weather(city_df, selected_cities):
         st.info("WeatherAPI Key 未配置，当前融合来源暂不包含 WeatherAPI。")
 
     city_info = city_df.set_index("city")[["location_id", "lat", "lon"]].to_dict("index")
-    all_rows = []
-    progress_text = st.empty()
-    progress_bar = st.progress(0, text="正在准备天气数据...")
-    valid_city_jobs = []
-
+    city_jobs = []
     for city in selected_cities:
         info = city_info.get(city)
         if not info:
             st.warning(f"{city} 未在城市配置文件中找到 location_id，已跳过。")
             continue
-        valid_city_jobs.append((city, info))
+        city_jobs.append(
+            (
+                city,
+                {
+                    "location_id": str(info["location_id"]),
+                    "lat": float(info["lat"]),
+                    "lon": float(info["lon"]),
+                },
+            )
+        )
 
-    if not valid_city_jobs:
-        progress_text.empty()
-        progress_bar.empty()
+    if not city_jobs:
         return pd.DataFrame()
 
-    completed = 0
-    max_workers = min(WEATHER_FETCH_MAX_WORKERS, len(valid_city_jobs))
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_map = {
-            executor.submit(fetch_city_weather_rows, city, info, qweather_enabled, weatherapi_enabled): city
-            for city, info in valid_city_jobs
-        }
-        for future in as_completed(future_map):
-            completed += 1
-            city = future_map[future]
-            try:
-                _, city_rows, messages = future.result()
-                all_rows.extend(city_rows)
-                for level, message in messages:
-                    if level == "warning":
-                        st.warning(message)
-            except Exception as exc:
-                st.warning(f"{city} 天气数据处理失败：{exc}")
-            progress_bar.progress(
-                completed / len(valid_city_jobs),
-                text=f"天气数据加载中：{completed}/{len(valid_city_jobs)} 个城市",
-            )
+    with st.spinner("正在加载天气数据，缓存命中时会快速显示..."):
+        try:
+            weather_df, messages = fetch_weather_batch(tuple(city_jobs), qweather_enabled, weatherapi_enabled)
+        except Exception as exc:
+            st.error(f"没有获取到任何天气数据，请检查 API Key、API Host、网络或接口额度。{exc}")
+            return pd.DataFrame()
 
-    progress_text.empty()
-    progress_bar.empty()
-    if not all_rows:
+    for level, message in messages:
+        if level == "warning":
+            st.warning(message)
+
+    if weather_df.empty:
         st.error("没有获取到任何天气数据，请检查 API Key、API Host、网络或接口额度。")
         return pd.DataFrame()
 
-    return pd.DataFrame(all_rows)
+    return weather_df
 
 
 def build_date_options(weather_df):
