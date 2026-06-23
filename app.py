@@ -6,7 +6,7 @@ import streamlit as st
 
 
 BASE_DIR = Path(__file__).resolve().parent
-CITY_FILE = BASE_DIR / "data" / "china_city_locations.csv"
+CITY_FILE = BASE_DIR / "data" / "china_city_pool.csv"
 HOURS = [f"{hour:02d}" for hour in range(24)]
 DATE_OPTIONS = [
     ("今天", "06-23", "2026-06-23"),
@@ -33,7 +33,24 @@ CITY_PROVINCES = {
     "沈阳市": "辽宁",
     "济南市": "山东",
 }
-DEFAULT_CITIES = list(CITY_PROVINCES.keys())
+DEFAULT_CITIES = [
+    "上海市",
+    "深圳市",
+    "大连市",
+    "天津市",
+    "西安市",
+    "无锡市",
+    "长沙市",
+    "杭州市",
+    "成都市",
+    "宁波市",
+    "苏州市",
+    "南京市",
+    "青岛市",
+    "沈阳市",
+    "济南市",
+]
+KEYWORD_PACKAGES = ["长三角", "珠三角", "华东", "华南", "西南", "重点经营", "高收入", "雨天敏感", "场站城市", "暑期旅游"]
 
 # Mock data mirrors the provided reference so the page can run without API calls.
 MOCK_ROWS = [
@@ -570,6 +587,46 @@ def inject_styles():
 
         div[data-testid="stDialog"] div[role="dialog"] {
             border-radius: 10px;
+            max-width: 1280px;
+            width: 92vw;
+        }
+
+        .city-entry {
+            border: 1px solid #e1ebf7;
+            background: #fbfdff;
+            border-radius: 8px;
+            padding: 8px 10px;
+            min-height: 52px;
+            margin-bottom: 8px;
+        }
+
+        .city-entry-name {
+            color: #14345f;
+            font-size: 14px;
+            font-weight: 900;
+            line-height: 1.3;
+        }
+
+        .city-entry-meta {
+            color: #6c82a1;
+            font-size: 12px;
+            font-weight: 700;
+            margin-top: 3px;
+        }
+
+        .city-manager-note {
+            color: #5a7398;
+            font-size: 12px;
+            line-height: 1.55;
+            font-weight: 700;
+        }
+
+        .selected-city-row {
+            border: 1px solid #dbe8f6;
+            background: #ffffff;
+            border-radius: 8px;
+            padding: 8px;
+            margin-bottom: 8px;
         }
 
         @media (max-width: 1200px) {
@@ -612,12 +669,41 @@ def build_base_dataframe():
 def load_city_catalog():
     if not CITY_FILE.exists():
         return pd.DataFrame(
-            [{"province": province, "city": city} for city, province in CITY_PROVINCES.items()]
+            [
+                {
+                    "province": province,
+                    "city": city,
+                    "city_code": "",
+                    "location_id": "",
+                    "lat": 0.0,
+                    "lon": 0.0,
+                    "region": "",
+                    "city_level": "地级市",
+                    "tags": "",
+                }
+                for city, province in CITY_PROVINCES.items()
+            ]
         )
     catalog = pd.read_csv(CITY_FILE, dtype={"location_id": str})
+    defaults = {
+        "province": "",
+        "city": "",
+        "city_code": "",
+        "location_id": "",
+        "lat": 0.0,
+        "lon": 0.0,
+        "region": "",
+        "city_level": "地级市",
+        "tags": "",
+    }
+    for column, default in defaults.items():
+        if column not in catalog.columns:
+            catalog[column] = default
     catalog["city"] = catalog["city"].astype(str).str.strip()
     catalog["province"] = catalog["province"].astype(str).str.strip()
-    return catalog[["province", "city"]].drop_duplicates(subset=["city"]).reset_index(drop=True)
+    catalog["region"] = catalog["region"].astype(str).str.strip()
+    catalog["tags"] = catalog["tags"].fillna("").astype(str)
+    return catalog[list(defaults.keys())].drop_duplicates(subset=["city"]).reset_index(drop=True)
 
 
 def city_province_map():
@@ -724,10 +810,164 @@ def apply_risk_filter(df, risk_filter):
 
 def initialize_state():
     st.session_state.setdefault("selected_cities", list(DEFAULT_CITIES))
-    st.session_state.setdefault("draft_cities", list(st.session_state["selected_cities"]))
-    st.session_state.setdefault("city_picker_values", list(st.session_state["selected_cities"]))
+    st.session_state.setdefault("pending_selected_cities", list(st.session_state["selected_cities"]))
+    st.session_state.setdefault("replace_city_index", None)
+    st.session_state.setdefault("city_groups", {"默认15城": list(DEFAULT_CITIES)})
+    st.session_state.setdefault("default_city_group", "默认15城")
     st.session_state.setdefault("selected_date", DATE_OPTIONS[0][2])
     st.session_state.setdefault("risk_filter", RISK_OPTIONS[0])
+
+
+def valid_city_set():
+    catalog = load_city_catalog()
+    usable = catalog[catalog["location_id"].fillna("").astype(str).str.strip() != ""]
+    return set(usable["city"].tolist())
+
+
+def clean_city_list(cities):
+    valid = valid_city_set()
+    cleaned = []
+    for city in cities:
+        if city in valid and city not in cleaned:
+            cleaned.append(city)
+    return cleaned
+
+
+def open_city_manager():
+    st.session_state["pending_selected_cities"] = clean_city_list(st.session_state["selected_cities"])
+    st.session_state["replace_city_index"] = None
+    open_city_selector()
+
+
+def pending_cities():
+    return clean_city_list(st.session_state.get("pending_selected_cities", []))
+
+
+def set_pending(cities):
+    st.session_state["pending_selected_cities"] = clean_city_list(cities)
+
+
+def add_pending_city(city):
+    pending = pending_cities()
+    if city in pending:
+        return
+    if len(pending) >= MAX_DISPLAY_CITIES:
+        st.session_state["city_manager_message"] = "当前看板最多展示15个城市，请先移除一个城市后再添加。"
+        return
+    replace_index = st.session_state.get("replace_city_index")
+    if replace_index is not None and 0 <= replace_index < len(pending):
+        pending[replace_index] = city
+        st.session_state["replace_city_index"] = None
+        set_pending(pending)
+        return
+    set_pending(pending + [city])
+
+
+def remove_pending_city(city):
+    pending = [item for item in pending_cities() if item != city]
+    set_pending(pending)
+
+
+def move_pending_city(index, direction):
+    pending = pending_cities()
+    target = index + direction
+    if 0 <= index < len(pending) and 0 <= target < len(pending):
+        pending[index], pending[target] = pending[target], pending[index]
+        set_pending(pending)
+
+
+def replace_pending_city(index):
+    st.session_state["replace_city_index"] = index
+
+
+def clear_pending_cities():
+    set_pending([])
+
+
+def restore_default_pending():
+    default_group = st.session_state.get("default_city_group", "默认15城")
+    cities = st.session_state.get("city_groups", {}).get(default_group, DEFAULT_CITIES)
+    set_pending(cities[:MAX_DISPLAY_CITIES])
+
+
+def apply_keyword_matches(cities, mode):
+    matches = clean_city_list(cities)
+    if len(matches) > MAX_DISPLAY_CITIES:
+        st.session_state["city_manager_message"] = "匹配城市超过15个，已默认取前15个。"
+        matches = matches[:MAX_DISPLAY_CITIES]
+    if mode == "replace":
+        set_pending(matches)
+    elif mode == "add":
+        pending = pending_cities()
+        for city in matches:
+            if city not in pending:
+                if len(pending) >= MAX_DISPLAY_CITIES:
+                    st.session_state["city_manager_message"] = "当前看板最多展示15个城市，请先移除一个城市后再添加。"
+                    break
+                pending.append(city)
+        set_pending(pending)
+
+
+def confirm_city_selection():
+    pending = pending_cities()
+    if not pending:
+        st.warning("请至少选择一个城市。")
+        return
+    if len(pending) > MAX_DISPLAY_CITIES:
+        st.warning(f"最多选择 {MAX_DISPLAY_CITIES} 个城市，请先移除部分城市。")
+        return
+    st.session_state["selected_cities"] = list(pending)
+    st.session_state["replace_city_index"] = None
+    st.rerun()
+
+
+def cancel_city_selection():
+    st.session_state["pending_selected_cities"] = list(st.session_state["selected_cities"])
+    st.session_state["replace_city_index"] = None
+    st.rerun()
+
+
+def save_city_group(name):
+    clean_name = str(name).strip()
+    if not clean_name:
+        st.session_state["city_manager_message"] = "请输入城市组合名称。"
+        return
+    pending = pending_cities()
+    if not pending:
+        st.session_state["city_manager_message"] = "请至少选择一个城市后再保存组合。"
+        return
+    st.session_state["city_groups"][clean_name] = pending
+
+
+def apply_city_group(name):
+    group = st.session_state.get("city_groups", {}).get(name)
+    if group:
+        set_pending(group[:MAX_DISPLAY_CITIES])
+
+
+def rename_city_group(old_name, new_name):
+    clean_name = str(new_name).strip()
+    groups = st.session_state.get("city_groups", {})
+    if not old_name or old_name not in groups or not clean_name:
+        return
+    groups[clean_name] = groups.pop(old_name)
+    if st.session_state.get("default_city_group") == old_name:
+        st.session_state["default_city_group"] = clean_name
+
+
+def delete_city_group(name):
+    if name == "默认15城":
+        st.session_state["city_manager_message"] = "默认15城不能删除。"
+        return
+    groups = st.session_state.get("city_groups", {})
+    groups.pop(name, None)
+    if st.session_state.get("default_city_group") == name:
+        st.session_state["default_city_group"] = "默认15城"
+
+
+def set_default_city_group(name):
+    if name in st.session_state.get("city_groups", {}):
+        st.session_state["default_city_group"] = name
 
 
 def render_header():
@@ -793,13 +1033,14 @@ def render_filter_bar():
     with st.container(border=True):
         cols = st.columns([1.8, 2.05, 1.35, 2.05])
         with cols[0]:
+            preview = "、".join(st.session_state["selected_cities"][:3])
+            suffix = "等" if len(st.session_state["selected_cities"]) > 3 else ""
             st.markdown(
-                f"<div class='filter-label city-filter-card'>当前城市：<span class='city-count'>{len(st.session_state['selected_cities'])} 个</span></div>",
+                f"<div class='filter-label city-filter-card'>当前监控城市：<span class='city-count'>{len(st.session_state['selected_cities'])} 个</span><br><span style='color:#6c82a1;font-weight:700;'>{html.escape(preview + suffix)}</span></div>",
                 unsafe_allow_html=True,
             )
             if st.button("管理城市", type="primary", use_container_width=True):
-                st.session_state["city_picker_values"] = list(st.session_state["selected_cities"])
-                open_city_selector()
+                open_city_manager()
         with cols[1]:
             st.markdown("<div class='filter-label'>选择日期：</div>", unsafe_allow_html=True)
             date_col = st.columns(3)
@@ -921,67 +1162,151 @@ def render_bottom_panel(df):
     st.markdown(bottom_html, unsafe_allow_html=True)
 
 
-def confirm_city_selection():
-    valid_cities = set(load_city_catalog()["city"].tolist())
-    picked = [city for city in st.session_state.get("city_picker_values", []) if city in valid_cities]
-    if not picked:
-        st.warning("请至少选择一个城市。")
-        return
-    if len(picked) > MAX_DISPLAY_CITIES:
-        st.warning(f"最多选择 {MAX_DISPLAY_CITIES} 个城市，请先移除部分城市。")
-        return
-    st.session_state["draft_cities"] = list(picked)
-    st.session_state["selected_cities"] = list(picked)
-    st.rerun()
-
-
-def cancel_city_selection():
-    st.session_state["city_picker_values"] = list(st.session_state["selected_cities"])
-    st.rerun()
-
-
-def restore_default_city_picker():
-    st.session_state["city_picker_values"] = list(DEFAULT_CITIES)
-
-
 def render_city_selector_content():
     catalog = load_city_catalog()
-    all_cities = catalog["city"].tolist()
-    province_map = catalog.set_index("city")["province"].to_dict()
-    if "city_picker_values" not in st.session_state:
-        st.session_state["city_picker_values"] = list(st.session_state["selected_cities"])
+    if "city_manager_message" in st.session_state:
+        st.warning(st.session_state.pop("city_manager_message"))
 
-    provinces = ["全部省份"] + catalog["province"].dropna().drop_duplicates().tolist()
-    province = st.selectbox("按省份筛选", provinces)
-    keyword = st.text_input("搜索城市", placeholder="输入城市名称，例如：上海、杭州、宁波").strip()
+    left, middle, right = st.columns([1.05, 1.35, 1.25])
+    with left:
+        st.markdown("**筛选区**")
+        keyword = st.text_input("搜索城市", placeholder="输入城市名，例如：嘉兴、福州、深圳", key="city_search_keyword")
+        provinces = ["全部省份"] + catalog["province"].dropna().drop_duplicates().tolist()
+        regions = ["全部区域"] + catalog["region"].dropna().drop_duplicates().tolist()
+        province = st.selectbox("按省份筛选", provinces, key="city_filter_province")
+        region = st.selectbox("按区域筛选", regions, key="city_filter_region")
+        keyword_package = st.selectbox("关键词包筛选", ["不使用"] + KEYWORD_PACKAGES, key="city_keyword_package")
 
-    filtered = all_cities
-    if province != "全部省份":
-        filtered = [city for city in filtered if province_map.get(city) == province]
+        package_df = catalog[catalog["tags"].fillna("").str.contains(keyword_package, regex=False)] if keyword_package != "不使用" else catalog.head(0)
+        if keyword_package != "不使用":
+            preview = package_df["city"].head(MAX_DISPLAY_CITIES).tolist()
+            st.caption(f"匹配 {len(package_df)} 个城市，预览：{'、'.join(preview) if preview else '暂无'}")
+            package_cols = st.columns(3)
+            with package_cols[0]:
+                if st.button("添加到当前", use_container_width=True):
+                    apply_keyword_matches(package_df["city"].tolist(), "add")
+                    st.rerun()
+            with package_cols[1]:
+                if st.button("替换当前", use_container_width=True):
+                    apply_keyword_matches(package_df["city"].tolist(), "replace")
+                    st.rerun()
+            with package_cols[2]:
+                st.caption("可在候选列表手动添加")
+
+        st.markdown("**城市组合**")
+        groups = st.session_state.get("city_groups", {})
+        group_names = list(groups.keys()) or ["默认15城"]
+        if st.session_state.get("city_group_select") not in group_names:
+            st.session_state["city_group_select"] = group_names[0]
+        selected_group = st.selectbox("选择组合", group_names, key="city_group_select")
+        group_cols = st.columns(3)
+        with group_cols[0]:
+            if st.button("应用", use_container_width=True):
+                apply_city_group(selected_group)
+                st.rerun()
+        with group_cols[1]:
+            if st.button("默认", use_container_width=True):
+                set_default_city_group(selected_group)
+                st.rerun()
+        with group_cols[2]:
+            if st.button("删除", use_container_width=True):
+                delete_city_group(selected_group)
+                st.rerun()
+        group_name = st.text_input("保存 / 重命名为", placeholder="例如：华东运营15城", key="city_group_name")
+        save_cols = st.columns(2)
+        with save_cols[0]:
+            if st.button("保存当前组合", use_container_width=True):
+                save_city_group(group_name)
+                st.rerun()
+        with save_cols[1]:
+            if st.button("重命名组合", use_container_width=True):
+                rename_city_group(selected_group, group_name)
+                st.rerun()
+
+    filtered = catalog.copy()
     if keyword:
-        filtered = [city for city in filtered if keyword in city]
+        filtered = filtered[filtered["city"].str.contains(keyword.strip(), na=False, regex=False)]
+    if province != "全部省份":
+        filtered = filtered[filtered["province"] == province]
+    if region != "全部区域":
+        filtered = filtered[filtered["region"] == region]
+    if keyword_package != "不使用":
+        filtered = filtered[filtered["tags"].fillna("").str.contains(keyword_package, regex=False)]
 
-    current_picked = [city for city in st.session_state["city_picker_values"] if city in all_cities]
-    visible_options = list(dict.fromkeys(current_picked + filtered))
-    st.multiselect(
-        "多选城市",
-        visible_options,
-        key="city_picker_values",
-        format_func=lambda city: f"{city}（{province_map.get(city, '')}）",
-        placeholder="选择需要展示的城市",
-    )
-    picked_count = len(st.session_state["city_picker_values"])
-    st.caption(f"已预选 {picked_count}/{MAX_DISPLAY_CITIES} 个城市；点击确认后才会更新主看板。")
-    if picked_count > MAX_DISPLAY_CITIES:
-        st.warning(f"当前超过 {MAX_DISPLAY_CITIES} 个城市，请移除部分城市后再确认。")
+    with middle:
+        st.markdown("**候选城市列表**")
+        st.caption(f"符合条件：{len(filtered)} 个；仅展示前 30 个。")
+        for _, row in filtered.head(30).iterrows():
+            city = row["city"]
+            selected = city in pending_cities()
+            available = str(row.get("location_id", "")).strip() != ""
+            entry_cols = st.columns([2.3, 0.9])
+            with entry_cols[0]:
+                st.markdown(
+                    f"<div class='city-entry'><div class='city-entry-name'>{html.escape(city)}</div>"
+                    f"<div class='city-entry-meta'>{html.escape(row['province'])}｜{html.escape(row['region'])}｜{html.escape(str(row['tags']) or '无标签')}</div></div>",
+                    unsafe_allow_html=True,
+                )
+            with entry_cols[1]:
+                if not available:
+                    st.button("暂不可用", key=f"candidate_unavailable_{city}", disabled=True, use_container_width=True)
+                elif selected:
+                    st.button("已选择", key=f"candidate_selected_{city}", disabled=True, use_container_width=True)
+                else:
+                    if st.button("添加", key=f"candidate_add_{city}", use_container_width=True):
+                        add_pending_city(city)
+                        st.rerun()
 
-    action_cols = st.columns([1, 1, 1.3])
-    with action_cols[0]:
-        st.button("取消", on_click=cancel_city_selection, use_container_width=True)
-    with action_cols[1]:
-        st.button("恢复默认15城", on_click=restore_default_city_picker, use_container_width=True)
-    with action_cols[2]:
-        st.button("确认", type="primary", on_click=confirm_city_selection, use_container_width=True)
+    with right:
+        pending = pending_cities()
+        st.markdown(f"**当前已选城市 {len(pending)}/{MAX_DISPLAY_CITIES}**")
+        st.caption("添加、删除、排序、替换都只影响弹窗临时选择；点击确认后才应用主看板。")
+        selected_action_cols = st.columns(2)
+        with selected_action_cols[0]:
+            if st.button("清空", use_container_width=True):
+                clear_pending_cities()
+                st.rerun()
+        with selected_action_cols[1]:
+            if st.button("恢复默认", use_container_width=True):
+                restore_default_pending()
+                st.rerun()
+
+        replace_index = st.session_state.get("replace_city_index")
+        if replace_index is not None:
+            st.info(f"正在替换第 {replace_index + 1} 个城市，请在中间候选列表选择新城市。")
+
+        for index, city in enumerate(pending):
+            row_cols = st.columns([1.9, 0.55, 0.55, 0.7, 0.7])
+            with row_cols[0]:
+                province = catalog.loc[catalog["city"] == city, "province"]
+                province_text = province.iloc[0] if not province.empty else ""
+                st.markdown(
+                    f"<div class='selected-city-row'><div class='city-entry-name'>{index + 1}. {html.escape(city)}</div>"
+                    f"<div class='city-entry-meta'>{html.escape(province_text)}</div></div>",
+                    unsafe_allow_html=True,
+                )
+            with row_cols[1]:
+                if st.button("↑", key=f"city_up_{city}_{index}", disabled=index == 0):
+                    move_pending_city(index, -1)
+                    st.rerun()
+            with row_cols[2]:
+                if st.button("↓", key=f"city_down_{city}_{index}", disabled=index == len(pending) - 1):
+                    move_pending_city(index, 1)
+                    st.rerun()
+            with row_cols[3]:
+                if st.button("替换", key=f"city_replace_{city}_{index}", use_container_width=True):
+                    replace_pending_city(index)
+                    st.rerun()
+            with row_cols[4]:
+                if st.button("删除", key=f"city_remove_{city}_{index}", disabled=len(pending) <= 1, use_container_width=True):
+                    remove_pending_city(city)
+                    st.rerun()
+
+        confirm_cols = st.columns([1, 1.2])
+        with confirm_cols[0]:
+            st.button("取消", on_click=cancel_city_selection, use_container_width=True)
+        with confirm_cols[1]:
+            st.button("确认应用城市", type="primary", on_click=confirm_city_selection, use_container_width=True)
 
 
 if hasattr(st, "dialog"):
@@ -997,6 +1322,10 @@ def main():
     page_config()
     inject_styles()
     initialize_state()
+    cleaned_selected = clean_city_list(st.session_state["selected_cities"])
+    if not cleaned_selected:
+        cleaned_selected = list(DEFAULT_CITIES)
+    st.session_state["selected_cities"] = cleaned_selected[:MAX_DISPLAY_CITIES]
 
     selected_df = shifted_dataframe(st.session_state["selected_date"], st.session_state["selected_cities"])
     filtered_df = apply_risk_filter(selected_df, st.session_state["risk_filter"])
