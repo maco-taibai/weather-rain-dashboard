@@ -1,9 +1,12 @@
 import html
+from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 
 
+BASE_DIR = Path(__file__).resolve().parent
+CITY_FILE = BASE_DIR / "data" / "china_city_locations.csv"
 HOURS = [f"{hour:02d}" for hour in range(24)]
 DATE_OPTIONS = [
     ("今天", "06-23", "2026-06-23"),
@@ -11,6 +14,7 @@ DATE_OPTIONS = [
     ("后天", "06-25", "2026-06-25"),
 ]
 RISK_OPTIONS = ["全部风险", "高风险", "中高风险", "中低风险", "低风险"]
+MAX_DISPLAY_CITIES = 15
 
 CITY_PROVINCES = {
     "上海市": "上海",
@@ -29,6 +33,7 @@ CITY_PROVINCES = {
     "沈阳市": "辽宁",
     "济南市": "山东",
 }
+DEFAULT_CITIES = list(CITY_PROVINCES.keys())
 
 # Mock data mirrors the provided reference so the page can run without API calls.
 MOCK_ROWS = [
@@ -265,6 +270,14 @@ def inject_styles():
         .city-count {
             color: #1d5fae;
             font-weight: 900;
+        }
+
+        .city-filter-card {
+            min-height: 74px;
+        }
+
+        .city-filter-card .stButton {
+            margin-top: 8px;
         }
 
         .segmented,
@@ -595,9 +608,66 @@ def build_base_dataframe():
     return pd.DataFrame(rows)
 
 
-def shifted_dataframe(date_key):
+@st.cache_data
+def load_city_catalog():
+    if not CITY_FILE.exists():
+        return pd.DataFrame(
+            [{"province": province, "city": city} for city, province in CITY_PROVINCES.items()]
+        )
+    catalog = pd.read_csv(CITY_FILE, dtype={"location_id": str})
+    catalog["city"] = catalog["city"].astype(str).str.strip()
+    catalog["province"] = catalog["province"].astype(str).str.strip()
+    return catalog[["province", "city"]].drop_duplicates(subset=["city"]).reset_index(drop=True)
+
+
+def city_province_map():
+    catalog = load_city_catalog()
+    return catalog.set_index("city")["province"].to_dict()
+
+
+def generated_city_row(city, province):
+    seed = sum(ord(char) for char in city)
+    weather_options = ["晴天", "多云", "阴", "小阵雨", "阵雨", "小毛毛雨", "雷阵雨"]
+    weather = weather_options[seed % len(weather_options)]
+    peak_start = seed % 21
+    base = seed % 24
+    values = []
+    for hour in range(24):
+        distance = min(abs(hour - peak_start), abs(hour - peak_start - 24), abs(hour - peak_start + 24))
+        wave = max(0, 42 - distance * 7)
+        value = max(0, min(95, base + wave + ((seed + hour * 11) % 13) - 6))
+        values.append(int(value))
+
+    max_prob = max(values)
+    risk_window = f"{peak_start:02d}-{min(23, peak_start + 2):02d}时"
+    row = {
+        "city": city,
+        "province": province,
+        "weather": weather,
+        "max_prob": max_prob,
+        "risk_window": risk_window,
+    }
+    row.update({hour: values[index] for index, hour in enumerate(HOURS)})
+    return row
+
+
+def build_dataframe_for_cities(cities):
+    base = build_base_dataframe().set_index("city", drop=False)
+    provinces = city_province_map()
+    rows = []
+    for city in cities:
+        if city in base.index:
+            row = base.loc[city].to_dict()
+            row["province"] = provinces.get(city, row.get("province", ""))
+            rows.append(row)
+        elif city in provinces:
+            rows.append(generated_city_row(city, provinces[city]))
+    return pd.DataFrame(rows)
+
+
+def shifted_dataframe(date_key, cities=None):
     """Create lightweight mock variants for today, tomorrow, and the day after."""
-    base = build_base_dataframe()
+    base = build_dataframe_for_cities(cities or DEFAULT_CITIES)
     offsets = {"2026-06-23": 0, "2026-06-24": -7, "2026-06-25": 5}
     offset = offsets.get(date_key, 0)
     if offset == 0:
@@ -653,8 +723,7 @@ def apply_risk_filter(df, risk_filter):
 
 
 def initialize_state():
-    cities = [row[0] for row in MOCK_ROWS]
-    st.session_state.setdefault("selected_cities", cities)
+    st.session_state.setdefault("selected_cities", list(DEFAULT_CITIES))
     st.session_state.setdefault("draft_cities", list(st.session_state["selected_cities"]))
     st.session_state.setdefault("city_picker_values", list(st.session_state["selected_cities"]))
     st.session_state.setdefault("selected_date", DATE_OPTIONS[0][2])
@@ -724,16 +793,13 @@ def render_filter_bar():
     with st.container(border=True):
         cols = st.columns([1.8, 2.05, 1.35, 2.05])
         with cols[0]:
-            city_cols = st.columns([1.15, 1])
-            with city_cols[0]:
-                st.markdown(
-                    f"<div class='filter-label'>当前城市：<span class='city-count'>{len(st.session_state['selected_cities'])} 个</span></div>",
-                    unsafe_allow_html=True,
-                )
-            with city_cols[1]:
-                if st.button("管理城市", type="primary", use_container_width=True):
-                    st.session_state["city_picker_values"] = list(st.session_state["selected_cities"])
-                    open_city_selector()
+            st.markdown(
+                f"<div class='filter-label city-filter-card'>当前城市：<span class='city-count'>{len(st.session_state['selected_cities'])} 个</span></div>",
+                unsafe_allow_html=True,
+            )
+            if st.button("管理城市", type="primary", use_container_width=True):
+                st.session_state["city_picker_values"] = list(st.session_state["selected_cities"])
+                open_city_selector()
         with cols[1]:
             st.markdown("<div class='filter-label'>选择日期：</div>", unsafe_allow_html=True)
             date_col = st.columns(3)
@@ -856,9 +922,13 @@ def render_bottom_panel(df):
 
 
 def confirm_city_selection():
-    picked = [city for city in st.session_state.get("city_picker_values", []) if city in CITY_PROVINCES]
+    valid_cities = set(load_city_catalog()["city"].tolist())
+    picked = [city for city in st.session_state.get("city_picker_values", []) if city in valid_cities]
     if not picked:
         st.warning("请至少选择一个城市。")
+        return
+    if len(picked) > MAX_DISPLAY_CITIES:
+        st.warning(f"最多选择 {MAX_DISPLAY_CITIES} 个城市，请先移除部分城市。")
         return
     st.session_state["draft_cities"] = list(picked)
     st.session_state["selected_cities"] = list(picked)
@@ -871,21 +941,23 @@ def cancel_city_selection():
 
 
 def restore_default_city_picker():
-    st.session_state["city_picker_values"] = [row[0] for row in MOCK_ROWS]
+    st.session_state["city_picker_values"] = list(DEFAULT_CITIES)
 
 
 def render_city_selector_content():
-    all_cities = [row[0] for row in MOCK_ROWS]
+    catalog = load_city_catalog()
+    all_cities = catalog["city"].tolist()
+    province_map = catalog.set_index("city")["province"].to_dict()
     if "city_picker_values" not in st.session_state:
         st.session_state["city_picker_values"] = list(st.session_state["selected_cities"])
 
-    provinces = ["全部省份"] + sorted(set(CITY_PROVINCES.values()))
+    provinces = ["全部省份"] + catalog["province"].dropna().drop_duplicates().tolist()
     province = st.selectbox("按省份筛选", provinces)
     keyword = st.text_input("搜索城市", placeholder="输入城市名称，例如：上海、杭州、宁波").strip()
 
     filtered = all_cities
     if province != "全部省份":
-        filtered = [city for city in filtered if CITY_PROVINCES.get(city) == province]
+        filtered = [city for city in filtered if province_map.get(city) == province]
     if keyword:
         filtered = [city for city in filtered if keyword in city]
 
@@ -895,10 +967,13 @@ def render_city_selector_content():
         "多选城市",
         visible_options,
         key="city_picker_values",
-        format_func=lambda city: f"{city}（{CITY_PROVINCES.get(city, '')}）",
+        format_func=lambda city: f"{city}（{province_map.get(city, '')}）",
         placeholder="选择需要展示的城市",
     )
-    st.caption(f"已预选 {len(st.session_state['city_picker_values'])} 个城市；点击确认后才会更新主看板。")
+    picked_count = len(st.session_state["city_picker_values"])
+    st.caption(f"已预选 {picked_count}/{MAX_DISPLAY_CITIES} 个城市；点击确认后才会更新主看板。")
+    if picked_count > MAX_DISPLAY_CITIES:
+        st.warning(f"当前超过 {MAX_DISPLAY_CITIES} 个城市，请移除部分城市后再确认。")
 
     action_cols = st.columns([1, 1, 1.3])
     with action_cols[0]:
@@ -923,8 +998,7 @@ def main():
     inject_styles()
     initialize_state()
 
-    selected_df = shifted_dataframe(st.session_state["selected_date"])
-    selected_df = selected_df[selected_df["city"].isin(st.session_state["selected_cities"])]
+    selected_df = shifted_dataframe(st.session_state["selected_date"], st.session_state["selected_cities"])
     filtered_df = apply_risk_filter(selected_df, st.session_state["risk_filter"])
 
     render_header()
