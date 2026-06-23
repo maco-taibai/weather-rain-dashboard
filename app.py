@@ -7,6 +7,7 @@ import streamlit as st
 
 BASE_DIR = Path(__file__).resolve().parent
 CITY_FILE = BASE_DIR / "data" / "china_city_pool.csv"
+LEGACY_CITY_FILE = BASE_DIR / "data" / "china_city_locations.csv"
 HOURS = [f"{hour:02d}" for hour in range(24)]
 DATE_OPTIONS = [
     ("今天", "06-23", "2026-06-23"),
@@ -667,7 +668,8 @@ def build_base_dataframe():
 
 @st.cache_data
 def load_city_catalog():
-    if not CITY_FILE.exists():
+    source_file = CITY_FILE if CITY_FILE.exists() else LEGACY_CITY_FILE
+    if not source_file.exists():
         return pd.DataFrame(
             [
                 {
@@ -684,7 +686,7 @@ def load_city_catalog():
                 for city, province in CITY_PROVINCES.items()
             ]
         )
-    catalog = pd.read_csv(CITY_FILE, dtype={"location_id": str})
+    catalog = pd.read_csv(source_file, dtype={"location_id": str})
     defaults = {
         "province": "",
         "city": "",
@@ -702,7 +704,7 @@ def load_city_catalog():
     catalog["city"] = catalog["city"].astype(str).str.strip()
     catalog["province"] = catalog["province"].astype(str).str.strip()
     catalog["region"] = catalog["region"].astype(str).str.strip()
-    catalog["tags"] = catalog["tags"].fillna("").astype(str)
+    catalog["tags"] = catalog["tags"].fillna("").astype(str).replace("nan", "")
     return catalog[list(defaults.keys())].drop_duplicates(subset=["city"]).reset_index(drop=True)
 
 
@@ -1174,7 +1176,11 @@ def render_city_selector_content():
     ).strip()
 
     if keyword:
-        filtered = catalog[catalog["city"].str.contains(keyword, na=False, regex=False)].copy()
+        search_columns = ["province", "city", "region", "tags"]
+        search_mask = False
+        for column in search_columns:
+            search_mask = search_mask | catalog[column].fillna("").astype(str).str.contains(keyword, na=False, regex=False)
+        filtered = catalog[search_mask].copy()
     else:
         default_pool = list(dict.fromkeys(DEFAULT_CITIES + pending_cities()))
         filtered = catalog[catalog["city"].isin(default_pool)].copy()
@@ -1196,9 +1202,10 @@ def render_city_selector_content():
             available = str(row.get("location_id", "")).strip() != ""
             entry_cols = st.columns([2.3, 0.9])
             with entry_cols[0]:
+                tags = str(row.get("tags", "") or "").strip()
                 st.markdown(
                     f"<div class='city-entry'><div class='city-entry-name'>{html.escape(city)}</div>"
-                    f"<div class='city-entry-meta'>{html.escape(row['province'])}｜{html.escape(row['region'])}｜{html.escape(str(row['tags']) or '无标签')}</div></div>",
+                    f"<div class='city-entry-meta'>{html.escape(row['province'])}｜{html.escape(row['region'])}｜{html.escape(tags or '无标签')}</div></div>",
                     unsafe_allow_html=True,
                 )
             with entry_cols[1]:
