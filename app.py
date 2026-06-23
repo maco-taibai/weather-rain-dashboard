@@ -660,25 +660,23 @@ def initialize_state():
 
 
 def render_header():
-    st.markdown(
-        """
-        <div class="topbar">
-            <div class="brand">
-                <div class="brand-icon">☔</div>
-                <div>
-                    <div class="brand-title">城市72小时降雨概率雷达</div>
-                    <div class="brand-sub">72小时监测</div>
-                </div>
-            </div>
-            <div class="service">
-                <span>气象数据服务中心</span>
-                <span>更新时间：2026-06-23 01:37</span>
-                <button class="refresh-btn">刷新数据</button>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    header_html = (
+        '<div class="topbar">'
+        '<div class="brand">'
+        '<div class="brand-icon">☔</div>'
+        '<div>'
+        '<div class="brand-title">城市72小时降雨概率雷达</div>'
+        '<div class="brand-sub">72小时监测</div>'
+        "</div>"
+        "</div>"
+        '<div class="service">'
+        "<span>气象数据服务中心</span>"
+        "<span>更新时间：2026-06-23 01:37</span>"
+        '<button class="refresh-btn">刷新数据</button>'
+        "</div>"
+        "</div>"
     )
+    st.markdown(header_html, unsafe_allow_html=True)
 
 
 def render_summary_cards(df):
@@ -693,16 +691,16 @@ def render_summary_cards(df):
         ("▧", "数据更新时间 / 数据源", "2026-06-23 01:37", "数据源：Open-Meteo 4.0、和风天气 3.0", ""),
     ]
     card_html = "".join(
-        f"""
-        <div class="summary-card">
-            <div class="summary-icon">{icon}</div>
-            <div>
-                <div class="summary-label">{label}</div>
-                <div class="summary-value {value_class}">{html.escape(value)}</div>
-                <div class="summary-hint">{html.escape(hint)}</div>
-            </div>
-        </div>
-        """
+        (
+            '<div class="summary-card">'
+            f'<div class="summary-icon">{icon}</div>'
+            "<div>"
+            f'<div class="summary-label">{html.escape(label)}</div>'
+            f'<div class="summary-value {value_class}">{html.escape(value)}</div>'
+            f'<div class="summary-hint">{html.escape(hint)}</div>'
+            "</div>"
+            "</div>"
+        )
         for icon, label, value, hint, value_class in cards
     )
     st.markdown(f"<div class='summary-grid'>{card_html}</div>", unsafe_allow_html=True)
@@ -782,42 +780,42 @@ def render_heatmap_table(df):
             cells.append(f"<td class='{risk_class(value)}'>{value}%</td>")
         body_rows.append(f"<tr>{''.join(cells)}</tr>")
 
-    table_html = f"""
-    <div class="table-card">
-        <div class="table-heading">
-            <div class="table-title">15个城市24小时降雨概率预测（%）</div>
-            <div class="table-note">当前日期：{html.escape(st.session_state["selected_date"])}｜展示城市：{len(df)} 个</div>
-        </div>
-        <div class="table-wrap">
-            <table class="rain-table">
-                <thead><tr>{''.join(header_cells)}</tr></thead>
-                <tbody>{''.join(body_rows)}</tbody>
-            </table>
-        </div>
-    </div>
-    """
+    table_html = (
+        '<div class="table-card">'
+        '<div class="table-heading">'
+        '<div class="table-title">15个城市24小时降雨概率预测（%）</div>'
+        f'<div class="table-note">当前日期：{html.escape(st.session_state["selected_date"])}｜展示城市：{len(df)} 个</div>'
+        "</div>"
+        '<div class="table-wrap">'
+        '<table class="rain-table">'
+        f"<thead><tr>{''.join(header_cells)}</tr></thead>"
+        f"<tbody>{''.join(body_rows)}</tbody>"
+        "</table>"
+        "</div>"
+        "</div>"
+    )
     st.markdown(table_html, unsafe_allow_html=True)
 
 
 def render_bottom_panel(df):
     top5 = df.sort_values("max_prob", ascending=False).head(5)
     top5_html = "".join(
-        f"""
-        <div class="rank-pill">
-            <span class="rank-no">{index}</span>
-            <span>{html.escape(row['city'])}</span>
-            <span class="rank-value">{int(row['max_prob'])}%</span>
-        </div>
-        """
+        (
+            '<div class="rank-pill">'
+            f'<span class="rank-no">{index}</span>'
+            f"<span>{html.escape(row['city'])}</span>"
+            f'<span class="rank-value">{int(row["max_prob"])}%</span>'
+            "</div>"
+        )
         for index, (_, row) in enumerate(top5.iterrows(), start=1)
     )
     legend_html = "".join(
-        f"""
-        <div class="legend-item">
-            <span class="swatch {css_class}"></span>
-            <span>{label}</span>
-        </div>
-        """
+        (
+            '<div class="legend-item">'
+            f'<span class="swatch {css_class}"></span>'
+            f"<span>{html.escape(label)}</span>"
+            "</div>"
+        )
         for css_class, label in [
             ("risk-low", "0-29%　低概率"),
             ("risk-mid", "30-59%　中等概率"),
@@ -826,28 +824,26 @@ def render_bottom_panel(df):
         ]
     )
 
-    st.markdown(
-        f"""
-        <div class="bottom-panel">
-            <div class="bottom-section">
-                <div class="bottom-title">高风险城市TOP5（按最高概率）</div>
-                <div class="top5-grid">{top5_html}</div>
-            </div>
-            <div class="bottom-section">
-                <div class="bottom-title">降雨概率图例（%）</div>
-                <div class="legend-grid">{legend_html}</div>
-            </div>
-            <div class="bottom-section">
-                <div class="bottom-title">数据说明</div>
-                <div class="data-copy">
-                    本产品基于 Open-Meteo 4.0 与和风天气 3.0 数据，采用多源融合算法生成未来72小时逐小时降雨概率预测。
-                    数据仅供参考，请结合实际情况合理安排出行与运营动作。
-                </div>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    bottom_html = (
+        '<div class="bottom-panel">'
+        '<div class="bottom-section">'
+        '<div class="bottom-title">高风险城市TOP5（按最高概率）</div>'
+        f'<div class="top5-grid">{top5_html}</div>'
+        "</div>"
+        '<div class="bottom-section">'
+        '<div class="bottom-title">降雨概率图例（%）</div>'
+        f'<div class="legend-grid">{legend_html}</div>'
+        "</div>"
+        '<div class="bottom-section">'
+        '<div class="bottom-title">数据说明</div>'
+        '<div class="data-copy">'
+        "本产品基于 Open-Meteo 4.0 与和风天气 3.0 数据，采用多源融合算法生成未来72小时逐小时降雨概率预测。"
+        "数据仅供参考，请结合实际情况合理安排出行与运营动作。"
+        "</div>"
+        "</div>"
+        "</div>"
     )
+    st.markdown(bottom_html, unsafe_allow_html=True)
 
 
 def confirm_city_selection():
