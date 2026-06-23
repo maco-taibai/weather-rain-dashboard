@@ -258,6 +258,7 @@ def inject_styles():
             color: #254c7d;
             font-size: 13px;
             font-weight: 850;
+            margin-bottom: 7px;
             white-space: nowrap;
         }
 
@@ -655,6 +656,7 @@ def initialize_state():
     cities = [row[0] for row in MOCK_ROWS]
     st.session_state.setdefault("selected_cities", cities)
     st.session_state.setdefault("draft_cities", list(st.session_state["selected_cities"]))
+    st.session_state.setdefault("city_picker_values", list(st.session_state["selected_cities"]))
     st.session_state.setdefault("selected_date", DATE_OPTIONS[0][2])
     st.session_state.setdefault("risk_filter", RISK_OPTIONS[0])
 
@@ -680,6 +682,10 @@ def render_header():
 
 
 def render_summary_cards(df):
+    if df.empty:
+        st.info("当前没有可展示城市，请在城市管理中至少选择一个城市。")
+        return
+
     high_df = df[df["max_prob"] >= 80].sort_values("max_prob", ascending=False)
     top = df.sort_values("max_prob", ascending=False).iloc[0]
     high_names = "、".join(high_df["city"].tolist()) or "暂无"
@@ -716,15 +722,18 @@ def set_risk_filter(option):
 
 def render_filter_bar():
     with st.container(border=True):
-        cols = st.columns([1.45, 2.15, 1.35, 2.1])
+        cols = st.columns([1.8, 2.05, 1.35, 2.05])
         with cols[0]:
-            st.markdown(
-                f"<div class='filter-label'>当前城市：<span class='city-count'>{len(st.session_state['selected_cities'])} 个</span></div>",
-                unsafe_allow_html=True,
-            )
-            if st.button("管理城市", type="primary", use_container_width=True):
-                st.session_state["draft_cities"] = list(st.session_state["selected_cities"])
-                open_city_selector()
+            city_cols = st.columns([1.15, 1])
+            with city_cols[0]:
+                st.markdown(
+                    f"<div class='filter-label'>当前城市：<span class='city-count'>{len(st.session_state['selected_cities'])} 个</span></div>",
+                    unsafe_allow_html=True,
+                )
+            with city_cols[1]:
+                if st.button("管理城市", type="primary", use_container_width=True):
+                    st.session_state["city_picker_values"] = list(st.session_state["selected_cities"])
+                    open_city_selector()
         with cols[1]:
             st.markdown("<div class='filter-label'>选择日期：</div>", unsafe_allow_html=True)
             date_col = st.columns(3)
@@ -847,20 +856,29 @@ def render_bottom_panel(df):
 
 
 def confirm_city_selection():
-    if not st.session_state["draft_cities"]:
+    picked = [city for city in st.session_state.get("city_picker_values", []) if city in CITY_PROVINCES]
+    if not picked:
         st.warning("请至少选择一个城市。")
         return
-    st.session_state["selected_cities"] = list(st.session_state["draft_cities"])
+    st.session_state["draft_cities"] = list(picked)
+    st.session_state["selected_cities"] = list(picked)
     st.rerun()
 
 
 def cancel_city_selection():
-    st.session_state["draft_cities"] = list(st.session_state["selected_cities"])
+    st.session_state["city_picker_values"] = list(st.session_state["selected_cities"])
     st.rerun()
+
+
+def restore_default_city_picker():
+    st.session_state["city_picker_values"] = [row[0] for row in MOCK_ROWS]
 
 
 def render_city_selector_content():
     all_cities = [row[0] for row in MOCK_ROWS]
+    if "city_picker_values" not in st.session_state:
+        st.session_state["city_picker_values"] = list(st.session_state["selected_cities"])
+
     provinces = ["全部省份"] + sorted(set(CITY_PROVINCES.values()))
     province = st.selectbox("按省份筛选", provinces)
     keyword = st.text_input("搜索城市", placeholder="输入城市名称，例如：上海、杭州、宁波").strip()
@@ -871,24 +889,22 @@ def render_city_selector_content():
     if keyword:
         filtered = [city for city in filtered if keyword in city]
 
-    current_draft = [city for city in st.session_state["draft_cities"] if city in all_cities]
-    visible_options = list(dict.fromkeys(current_draft + filtered))
+    current_picked = [city for city in st.session_state["city_picker_values"] if city in all_cities]
+    visible_options = list(dict.fromkeys(current_picked + filtered))
     st.multiselect(
         "多选城市",
         visible_options,
-        key="draft_cities",
+        key="city_picker_values",
         format_func=lambda city: f"{city}（{CITY_PROVINCES.get(city, '')}）",
         placeholder="选择需要展示的城市",
     )
-    st.caption(f"已预选 {len(st.session_state['draft_cities'])} 个城市；点击确认后才会更新主看板。")
+    st.caption(f"已预选 {len(st.session_state['city_picker_values'])} 个城市；点击确认后才会更新主看板。")
 
     action_cols = st.columns([1, 1, 1.3])
     with action_cols[0]:
         st.button("取消", on_click=cancel_city_selection, use_container_width=True)
     with action_cols[1]:
-        if st.button("恢复默认15城", use_container_width=True):
-            st.session_state["draft_cities"] = all_cities
-            st.rerun()
+        st.button("恢复默认15城", on_click=restore_default_city_picker, use_container_width=True)
     with action_cols[2]:
         st.button("确认", type="primary", on_click=confirm_city_selection, use_container_width=True)
 
