@@ -1,5 +1,7 @@
 import html
+from datetime import datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import streamlit as st
@@ -9,11 +11,23 @@ BASE_DIR = Path(__file__).resolve().parent
 CITY_FILE = BASE_DIR / "data" / "china_city_pool.csv"
 LEGACY_CITY_FILE = BASE_DIR / "data" / "china_city_locations.csv"
 HOURS = [f"{hour:02d}" for hour in range(24)]
-DATE_OPTIONS = [
-    ("今天", "06-23", "2026-06-23"),
-    ("明天", "06-24", "2026-06-24"),
-    ("后天", "06-25", "2026-06-25"),
-]
+TIMEZONE = ZoneInfo("Asia/Shanghai")
+
+
+def build_date_options():
+    today = datetime.now(TIMEZONE).date()
+    labels = ["今天", "明天", "后天"]
+    return [
+        (label, (today + timedelta(days=offset)).strftime("%m-%d"), (today + timedelta(days=offset)).isoformat())
+        for offset, label in enumerate(labels)
+    ]
+
+
+def current_update_time():
+    return datetime.now(TIMEZONE).strftime("%Y-%m-%d %H:%M")
+
+
+DATE_OPTIONS = build_date_options()
 RISK_OPTIONS = ["全部风险", "高风险", "中高风险", "中低风险", "低风险"]
 MAX_DISPLAY_CITIES = 15
 
@@ -112,7 +126,7 @@ def inject_styles():
 
         .block-container {
             max-width: 1880px;
-            padding: 18px 26px 22px;
+            padding: 18px 26px 104px;
         }
 
         header[data-testid="stHeader"],
@@ -121,6 +135,10 @@ def inject_styles():
         [data-testid="stToolbar"],
         [data-testid="stDecoration"],
         [data-testid="stDeployButton"],
+        [data-testid="stStatusWidget"],
+        [data-testid="stConnectionStatus"],
+        [data-testid="manage-app-button"],
+        .stStatusWidget,
         .stDeployButton {
             display: none !important;
             visibility: hidden !important;
@@ -343,6 +361,7 @@ def inject_styles():
             justify-content: space-between;
             gap: 10px;
             margin-bottom: 10px;
+            flex-wrap: wrap;
         }
 
         .table-title {
@@ -362,6 +381,9 @@ def inject_styles():
             border: 1px solid #dce8f5;
             border-radius: 6px;
             background: white;
+            max-width: 100%;
+            -webkit-overflow-scrolling: touch;
+            overscroll-behavior-x: contain;
         }
 
         .rain-table {
@@ -549,6 +571,12 @@ def inject_styles():
             gap: 12px 22px;
         }
 
+        .heatmap-legend {
+            align-items: center;
+            min-width: min(520px, 100%);
+            margin-left: auto;
+        }
+
         .legend-item {
             display: flex;
             align-items: center;
@@ -588,8 +616,14 @@ def inject_styles():
 
         div[data-testid="stDialog"] div[role="dialog"] {
             border-radius: 10px;
-            max-width: 1280px;
-            width: 92vw;
+            max-width: 1040px;
+            max-height: 88vh;
+            overflow-y: auto;
+            width: 94vw;
+        }
+
+        div[data-testid="stDialog"] div[data-testid="stVerticalBlock"] {
+            gap: 0.55rem;
         }
 
         .city-entry {
@@ -642,6 +676,179 @@ def inject_styles():
                 border-bottom: 1px solid #dce8f5;
                 padding-right: 0;
                 padding-bottom: 14px;
+            }
+        }
+
+        @media (max-width: 700px) {
+            .block-container {
+                padding: 12px 10px calc(128px + env(safe-area-inset-bottom));
+            }
+
+            .topbar {
+                gap: 8px;
+            }
+
+            .brand {
+                gap: 10px;
+            }
+
+            .brand-icon {
+                width: 38px;
+                height: 38px;
+                border-radius: 10px;
+                font-size: 21px;
+            }
+
+            .brand-title {
+                font-size: 21px;
+            }
+
+            .service {
+                flex-wrap: wrap;
+                gap: 6px 10px;
+                white-space: normal;
+                font-size: 12px;
+            }
+
+            .summary-card {
+                min-height: auto;
+                padding: 12px;
+                gap: 12px;
+            }
+
+            .summary-icon {
+                width: 42px;
+                height: 42px;
+                font-size: 20px;
+            }
+
+            .summary-label {
+                font-size: 13px;
+                margin-bottom: 5px;
+            }
+
+            .summary-value {
+                font-size: 20px;
+            }
+
+            .filter-label,
+            .city-preview {
+                white-space: normal;
+            }
+
+            .table-card {
+                padding: 10px 8px;
+            }
+
+            .table-heading {
+                align-items: flex-start;
+            }
+
+            .table-title {
+                font-size: 17px;
+            }
+
+            .heatmap-legend {
+                width: 100%;
+                margin-left: 0;
+                grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+                gap: 8px 10px;
+            }
+
+            .legend-item {
+                gap: 7px;
+                font-size: 12px;
+            }
+
+            .swatch {
+                width: 28px;
+                height: 14px;
+                flex: 0 0 auto;
+            }
+
+            .rain-table {
+                min-width: 1120px;
+                font-size: 12px;
+            }
+
+            .rain-table th {
+                height: 32px;
+            }
+
+            .rain-table td {
+                height: 30px;
+            }
+
+            .col-city { width: 72px; }
+            .col-weather { width: 82px; }
+            .col-max { width: 76px; }
+            .col-window { width: 86px; }
+            .col-hour { width: 36px; }
+
+            .rain-table .col-weather,
+            .rain-table .weather-cell,
+            .rain-table .col-max,
+            .rain-table td:nth-child(3),
+            .rain-table .col-window,
+            .rain-table .window-cell {
+                position: static;
+                left: auto;
+            }
+
+            .rain-table .col-city,
+            .rain-table .city-cell {
+                position: sticky;
+                left: 0;
+                z-index: 4;
+            }
+
+            .rain-table th.col-city {
+                z-index: 5;
+            }
+
+            .city-cell {
+                padding-left: 8px;
+            }
+
+            .bottom-panel {
+                gap: 12px;
+                margin-top: 10px;
+                padding: 14px 12px;
+            }
+
+            .top5-grid,
+            .legend-grid {
+                grid-template-columns: 1fr;
+            }
+
+            div[data-testid="stDialog"] div[role="dialog"] {
+                width: 96vw;
+                max-height: 86vh;
+            }
+
+            .city-entry {
+                min-height: 44px;
+                padding: 6px 8px;
+                margin-bottom: 6px;
+            }
+
+            .selected-city-row {
+                padding: 6px;
+                margin-bottom: 6px;
+            }
+
+            .city-entry-name {
+                font-size: 13px;
+            }
+
+            .city-entry-meta,
+            .city-manager-note {
+                font-size: 11px;
+            }
+
+            .stButton > button {
+                min-height: 34px;
+                padding: 0.35rem 0.45rem;
             }
         }
         </style>
@@ -756,7 +963,9 @@ def build_dataframe_for_cities(cities):
 def shifted_dataframe(date_key, cities=None):
     """Create lightweight mock variants for today, tomorrow, and the day after."""
     base = build_dataframe_for_cities(cities or DEFAULT_CITIES)
-    offsets = {"2026-06-23": 0, "2026-06-24": -7, "2026-06-25": 5}
+    date_keys = [option[2] for option in DATE_OPTIONS]
+    offset_values = [0, -7, 5]
+    offsets = dict(zip(date_keys, offset_values))
     offset = offsets.get(date_key, 0)
     if offset == 0:
         return base
@@ -798,6 +1007,24 @@ def weather_icon(weather):
     return "☁"
 
 
+def risk_legend_html():
+    items = [
+        ("risk-low", "0-29%　低概率"),
+        ("risk-mid", "30-59%　中等概率"),
+        ("risk-high", "60-79%　较高概率"),
+        ("risk-extreme", "≥80%　高风险"),
+    ]
+    return "".join(
+        (
+            '<div class="legend-item">'
+            f'<span class="swatch {css_class}"></span>'
+            f"<span>{html.escape(label)}</span>"
+            "</div>"
+        )
+        for css_class, label in items
+    )
+
+
 def apply_risk_filter(df, risk_filter):
     if risk_filter == "高风险":
         return df[df["max_prob"] >= 80]
@@ -818,6 +1045,7 @@ def initialize_state():
     st.session_state.setdefault("default_city_group", "默认15城")
     st.session_state.setdefault("selected_date", DATE_OPTIONS[0][2])
     st.session_state.setdefault("risk_filter", RISK_OPTIONS[0])
+    st.session_state.setdefault("show_city_selector", False)
 
 
 def valid_city_set():
@@ -838,7 +1066,7 @@ def clean_city_list(cities):
 def open_city_manager():
     st.session_state["pending_selected_cities"] = clean_city_list(st.session_state["selected_cities"])
     st.session_state["replace_city_index"] = None
-    open_city_selector()
+    st.session_state["show_city_selector"] = True
 
 
 def pending_cities():
@@ -851,16 +1079,20 @@ def set_pending(cities):
 
 def add_pending_city(city):
     pending = pending_cities()
-    if city in pending:
-        return
-    if len(pending) >= MAX_DISPLAY_CITIES:
-        st.session_state["city_manager_message"] = "当前看板最多展示15个城市，请先移除一个城市后再添加。"
-        return
     replace_index = st.session_state.get("replace_city_index")
     if replace_index is not None and 0 <= replace_index < len(pending):
+        if city in pending and pending[replace_index] != city:
+            st.session_state["city_manager_message"] = "该城市已在当前列表中，不能重复选择。"
+            return
         pending[replace_index] = city
         st.session_state["replace_city_index"] = None
         set_pending(pending)
+        return
+    if city in pending:
+        st.session_state["city_manager_message"] = "该城市已在当前列表中。"
+        return
+    if len(pending) >= MAX_DISPLAY_CITIES:
+        st.session_state["city_manager_message"] = "当前看板最多展示15个城市，请先移除一个城市后再添加。"
         return
     set_pending(pending + [city])
 
@@ -880,6 +1112,9 @@ def move_pending_city(index, direction):
 
 def replace_pending_city(index):
     st.session_state["replace_city_index"] = index
+    pending = pending_cities()
+    if 0 <= index < len(pending):
+        st.session_state["city_manager_message"] = f"正在替换 {pending[index]}，请在搜索结果中选择新城市。"
 
 
 def clear_pending_cities():
@@ -910,6 +1145,13 @@ def apply_keyword_matches(cities, mode):
         set_pending(pending)
 
 
+def rerun_app():
+    try:
+        st.rerun(scope="app")
+    except TypeError:
+        st.rerun()
+
+
 def confirm_city_selection():
     pending = pending_cities()
     if not pending:
@@ -920,13 +1162,15 @@ def confirm_city_selection():
         return
     st.session_state["selected_cities"] = list(pending)
     st.session_state["replace_city_index"] = None
-    st.rerun()
+    st.session_state["show_city_selector"] = False
+    rerun_app()
 
 
 def cancel_city_selection():
     st.session_state["pending_selected_cities"] = list(st.session_state["selected_cities"])
     st.session_state["replace_city_index"] = None
-    st.rerun()
+    st.session_state["show_city_selector"] = False
+    rerun_app()
 
 
 def save_city_group(name):
@@ -973,6 +1217,7 @@ def set_default_city_group(name):
 
 
 def render_header():
+    updated_at = current_update_time()
     header_html = (
         '<div class="topbar">'
         '<div class="brand">'
@@ -984,7 +1229,7 @@ def render_header():
         "</div>"
         '<div class="service">'
         "<span>气象数据服务中心</span>"
-        "<span>更新时间：2026-06-23 01:37</span>"
+        f"<span>更新时间：{html.escape(updated_at)}</span>"
         '<button class="refresh-btn">刷新数据</button>'
         "</div>"
         "</div>"
@@ -997,6 +1242,7 @@ def render_summary_cards(df):
         st.info("当前没有可展示城市，请在城市管理中至少选择一个城市。")
         return
 
+    updated_at = current_update_time()
     high_df = df[df["max_prob"] >= 80].sort_values("max_prob", ascending=False)
     top = df.sort_values("max_prob", ascending=False).iloc[0]
     high_names = "、".join(high_df["city"].tolist()) or "暂无"
@@ -1005,7 +1251,7 @@ def render_summary_cards(df):
         ("🛡", "最高风险城市", f"{top['city']}　{int(top['max_prob'])}%", f"最高时段：{top['risk_window']}", "danger"),
         ("🛡", "高风险城市数", f"{len(high_df)} 个", high_names, ""),
         ("◷", "风险高峰时段", "09:00 - 11:00", "未来72小时内风险最集中的时段", ""),
-        ("▧", "数据更新时间 / 数据源", "2026-06-23 01:37", "数据源：Open-Meteo 4.0、和风天气 3.0", ""),
+        ("▧", "数据更新时间 / 数据源", updated_at, "数据源：本地 Mock，可无 API Key 运行", ""),
     ]
     card_html = "".join(
         (
@@ -1077,6 +1323,10 @@ def render_filter_bar():
 
 def render_heatmap_table(df):
     """Render the 4 fixed metadata columns plus 24 hourly probability columns."""
+    if df.empty:
+        st.warning("当前筛选条件下没有可展示城市，请调整日期或风险筛选。")
+        return
+
     header_cells = [
         "<th class='col-city'>城市</th>",
         "<th class='col-weather'>代表天气</th>",
@@ -1101,8 +1351,11 @@ def render_heatmap_table(df):
     table_html = (
         '<div class="table-card">'
         '<div class="table-heading">'
-        '<div class="table-title">15个城市24小时降雨概率预测（%）</div>'
+        "<div>"
+        '<div class="table-title">城市24小时降雨概率预测（%）</div>'
         f'<div class="table-note">当前日期：{html.escape(st.session_state["selected_date"])}｜展示城市：{len(df)} 个</div>'
+        "</div>"
+        f'<div class="heatmap-legend legend-grid">{risk_legend_html()}</div>'
         "</div>"
         '<div class="table-wrap">'
         '<table class="rain-table">'
@@ -1127,21 +1380,6 @@ def render_bottom_panel(df):
         )
         for index, (_, row) in enumerate(top5.iterrows(), start=1)
     )
-    legend_html = "".join(
-        (
-            '<div class="legend-item">'
-            f'<span class="swatch {css_class}"></span>'
-            f"<span>{html.escape(label)}</span>"
-            "</div>"
-        )
-        for css_class, label in [
-            ("risk-low", "0-29%　低概率"),
-            ("risk-mid", "30-59%　中等概率"),
-            ("risk-high", "60-79%　较高概率"),
-            ("risk-extreme", "≥80%　高风险"),
-        ]
-    )
-
     bottom_html = (
         '<div class="bottom-panel">'
         '<div class="bottom-section">'
@@ -1150,7 +1388,7 @@ def render_bottom_panel(df):
         "</div>"
         '<div class="bottom-section">'
         '<div class="bottom-title">降雨概率图例（%）</div>'
-        f'<div class="legend-grid">{legend_html}</div>'
+        f'<div class="legend-grid">{risk_legend_html()}</div>'
         "</div>"
         '<div class="bottom-section">'
         '<div class="bottom-title">数据说明</div>'
@@ -1185,7 +1423,7 @@ def render_city_selector_content():
         default_pool = list(dict.fromkeys(DEFAULT_CITIES + pending_cities()))
         filtered = catalog[catalog["city"].isin(default_pool)].copy()
 
-    result_col, selected_col = st.columns([1.25, 1])
+    result_col, selected_col = st.columns([1.05, 1], gap="medium")
     with result_col:
         st.markdown("**搜索结果**")
         if keyword:
@@ -1196,10 +1434,14 @@ def render_city_selector_content():
         if filtered.empty:
             st.info("没有找到匹配的地级市。")
 
-        for _, row in filtered.head(30).iterrows():
+        current_pending = pending_cities()
+        replace_index = st.session_state.get("replace_city_index")
+        for _, row in filtered.head(16).iterrows():
             city = row["city"]
-            selected = city in pending_cities()
+            selected = city in current_pending
             available = str(row.get("location_id", "")).strip() != ""
+            replacing_current = replace_index is not None and 0 <= replace_index < len(current_pending) and current_pending[replace_index] == city
+            duplicate_for_replace = replace_index is not None and selected and not replacing_current
             entry_cols = st.columns([2.3, 0.9])
             with entry_cols[0]:
                 tags = str(row.get("tags", "") or "").strip()
@@ -1211,12 +1453,17 @@ def render_city_selector_content():
             with entry_cols[1]:
                 if not available:
                     st.button("暂不可用", key=f"candidate_unavailable_{city}", disabled=True, use_container_width=True)
-                elif selected:
+                elif replacing_current:
+                    st.button("当前项", key=f"candidate_current_{city}", disabled=True, use_container_width=True)
+                elif duplicate_for_replace or (selected and replace_index is None):
                     st.button("已选择", key=f"candidate_selected_{city}", disabled=True, use_container_width=True)
+                elif replace_index is None and len(current_pending) >= MAX_DISPLAY_CITIES:
+                    st.button("已满", key=f"candidate_full_{city}", disabled=True, use_container_width=True)
                 else:
-                    if st.button("添加", key=f"candidate_add_{city}", use_container_width=True):
+                    action_label = "替换为" if replace_index is not None else "添加"
+                    if st.button(action_label, key=f"candidate_add_{city}", use_container_width=True):
                         add_pending_city(city)
-                        st.rerun()
+                        rerun_app()
 
     with selected_col:
         pending = pending_cities()
@@ -1226,15 +1473,15 @@ def render_city_selector_content():
         with selected_action_cols[0]:
             if st.button("清空", use_container_width=True):
                 clear_pending_cities()
-                st.rerun()
+                rerun_app()
         with selected_action_cols[1]:
             if st.button("恢复默认", use_container_width=True):
                 restore_default_pending()
-                st.rerun()
+                rerun_app()
 
         replace_index = st.session_state.get("replace_city_index")
         if replace_index is not None:
-            st.info(f"正在替换第 {replace_index + 1} 个城市，请在中间候选列表选择新城市。")
+            st.info(f"正在替换第 {replace_index + 1} 个城市，请在搜索结果中选择新城市。")
 
         for index, city in enumerate(pending):
             row_cols = st.columns([1.7, 0.7, 0.7])
@@ -1249,17 +1496,19 @@ def render_city_selector_content():
             with row_cols[1]:
                 if st.button("替换", key=f"city_replace_{city}_{index}", use_container_width=True):
                     replace_pending_city(index)
-                    st.rerun()
+                    rerun_app()
             with row_cols[2]:
                 if st.button("删除", key=f"city_remove_{city}_{index}", disabled=len(pending) <= 1, use_container_width=True):
                     remove_pending_city(city)
-                    st.rerun()
+                    rerun_app()
 
         confirm_cols = st.columns([1, 1.2])
         with confirm_cols[0]:
-            st.button("取消", on_click=cancel_city_selection, use_container_width=True)
+            if st.button("取消", use_container_width=True):
+                cancel_city_selection()
         with confirm_cols[1]:
-            st.button("确认应用城市", type="primary", on_click=confirm_city_selection, use_container_width=True)
+            if st.button("确认应用城市", type="primary", disabled=not pending, use_container_width=True):
+                confirm_city_selection()
 
 
 if hasattr(st, "dialog"):
@@ -1268,7 +1517,8 @@ if hasattr(st, "dialog"):
         render_city_selector_content()
 else:
     def open_city_selector():
-        st.session_state["show_city_selector"] = True
+        with st.expander("管理城市", expanded=True):
+            render_city_selector_content()
 
 
 def main():
@@ -1280,15 +1530,15 @@ def main():
         cleaned_selected = list(DEFAULT_CITIES)
     st.session_state["selected_cities"] = cleaned_selected[:MAX_DISPLAY_CITIES]
 
-    selected_df = shifted_dataframe(st.session_state["selected_date"], st.session_state["selected_cities"])
-    filtered_df = apply_risk_filter(selected_df, st.session_state["risk_filter"])
+    with st.spinner("正在准备城市降雨概率数据..."):
+        selected_df = shifted_dataframe(st.session_state["selected_date"], st.session_state["selected_cities"])
+        filtered_df = apply_risk_filter(selected_df, st.session_state["risk_filter"])
 
     render_header()
     render_summary_cards(selected_df)
     render_filter_bar()
     if st.session_state.get("show_city_selector"):
-        with st.expander("管理城市", expanded=True):
-            render_city_selector_content()
+        open_city_selector()
     render_heatmap_table(filtered_df)
     render_bottom_panel(selected_df)
 
