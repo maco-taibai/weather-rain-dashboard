@@ -377,7 +377,7 @@ def inject_styles():
         }
 
         .table-wrap {
-            overflow-x: auto;
+            overflow-x: visible;
             border: 1px solid #dce8f5;
             border-radius: 6px;
             background: white;
@@ -388,15 +388,16 @@ def inject_styles():
 
         .rain-table {
             width: 100%;
-            min-width: 1560px;
+            min-width: 0;
             border-collapse: separate;
             border-spacing: 0;
             table-layout: fixed;
-            font-size: 13px;
+            font-size: 12px;
         }
 
         .rain-table th {
-            height: 36px;
+            height: 28px;
+            padding: 0 !important;
             background: #f3f8fe;
             color: #143d72;
             border-bottom: 1px solid #dce8f5;
@@ -406,7 +407,8 @@ def inject_styles():
         }
 
         .rain-table td {
-            height: 31px;
+            height: 24px;
+            padding: 0 !important;
             text-align: center;
             border-bottom: 1px solid #edf2f8;
             border-right: 1px solid #edf2f8;
@@ -414,27 +416,114 @@ def inject_styles():
             white-space: nowrap;
         }
 
+        .hour-cell {
+            position: relative;
+            padding: 0 2px !important;
+            cursor: default;
+        }
+
+        .hour-value {
+            display: block;
+            line-height: 24px;
+        }
+
+        .hour-cell:focus,
+        .hour-cell:focus-within {
+            outline: 2px solid rgba(47, 117, 241, 0.35);
+            outline-offset: -2px;
+            z-index: 12;
+        }
+
+        .cell-tooltip {
+            visibility: hidden;
+            opacity: 0;
+            position: absolute;
+            left: 50%;
+            top: calc(100% + 8px);
+            transform: translateX(-50%);
+            z-index: 20;
+            min-width: 184px;
+            max-width: 240px;
+            padding: 8px 10px;
+            border: 1px solid #c7d9ee;
+            border-radius: 6px;
+            background: #ffffff;
+            box-shadow: 0 10px 24px rgba(24, 62, 112, 0.18);
+            color: #143d72;
+            font-size: 12px;
+            font-weight: 800;
+            line-height: 1.4;
+            text-align: left;
+            white-space: normal;
+            pointer-events: none;
+            transition: opacity 120ms ease;
+        }
+
+        .hour-cell:hover .cell-tooltip,
+        .hour-cell:focus .cell-tooltip,
+        .hour-cell:focus-within .cell-tooltip {
+            visibility: visible;
+            opacity: 1;
+        }
+
+        .hour-cell:nth-last-child(-n+4) .cell-tooltip {
+            left: auto;
+            right: 0;
+            transform: none;
+        }
+
+        .tooltip-title {
+            display: block;
+            font-weight: 900;
+            margin-bottom: 3px;
+        }
+
+        .tooltip-line {
+            display: block;
+            color: #385d8c;
+        }
+
         .rain-table tr:last-child td {
             border-bottom: none;
         }
 
-        .col-city { width: 84px; }
-        .col-weather { width: 92px; }
-        .col-max { width: 86px; }
-        .col-window { width: 102px; }
-        .col-hour { width: 46px; }
+        .col-city { width: 152px; }
+        .col-hour { width: auto; }
 
         .city-cell {
             color: #10386f;
             text-align: left !important;
-            padding-left: 12px;
+            padding: 0 6px !important;
             background: #fbfdff;
+            white-space: nowrap !important;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
-        .weather-cell,
-        .window-cell {
-            color: #385d8c;
-            background: #fbfdff;
+        .city-line {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            min-width: 0;
+            height: 24px;
+            line-height: 24px;
+            overflow: hidden;
+        }
+
+        .city-name {
+            flex: 0 0 auto;
+            font-size: 11px;
+            font-weight: 900;
+        }
+
+        .city-meta {
+            min-width: 0;
+            color: #57739a;
+            font-size: 9px;
+            font-weight: 800;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
         .rain-table .col-city,
@@ -444,32 +533,7 @@ def inject_styles():
             z-index: 4;
         }
 
-        .rain-table .col-weather,
-        .rain-table .weather-cell {
-            position: sticky;
-            left: 84px;
-            z-index: 4;
-        }
-
-        .rain-table .col-max,
-        .rain-table td:nth-child(3) {
-            position: sticky;
-            left: 176px;
-            z-index: 4;
-            background-clip: padding-box;
-        }
-
-        .rain-table .col-window,
-        .rain-table .window-cell {
-            position: sticky;
-            left: 262px;
-            z-index: 4;
-        }
-
-        .rain-table th.col-city,
-        .rain-table th.col-weather,
-        .rain-table th.col-max,
-        .rain-table th.col-window {
+        .rain-table th.col-city {
             z-index: 5;
         }
 
@@ -679,6 +743,17 @@ def inject_styles():
             }
         }
 
+        @media (max-width: 1100px) {
+            .table-wrap {
+                overflow-x: auto;
+            }
+
+            .rain-table {
+                min-width: 1080px;
+                font-size: 11px;
+            }
+        }
+
         @media (max-width: 700px) {
             .block-container {
                 padding: 12px 10px calc(128px + env(safe-area-inset-bottom));
@@ -740,6 +815,10 @@ def inject_styles():
                 padding: 10px 8px;
             }
 
+            .table-wrap {
+                overflow-x: auto;
+            }
+
             .table-heading {
                 align-items: flex-start;
             }
@@ -767,8 +846,8 @@ def inject_styles():
             }
 
             .rain-table {
-                min-width: 1120px;
-                font-size: 12px;
+                min-width: 1080px;
+                font-size: 11px;
             }
 
             .rain-table th {
@@ -779,21 +858,8 @@ def inject_styles():
                 height: 30px;
             }
 
-            .col-city { width: 72px; }
-            .col-weather { width: 82px; }
-            .col-max { width: 76px; }
-            .col-window { width: 86px; }
-            .col-hour { width: 36px; }
-
-            .rain-table .col-weather,
-            .rain-table .weather-cell,
-            .rain-table .col-max,
-            .rain-table td:nth-child(3),
-            .rain-table .col-window,
-            .rain-table .window-cell {
-                position: static;
-                left: auto;
-            }
+            .col-city { width: 132px; }
+            .col-hour { width: auto; }
 
             .rain-table .col-city,
             .rain-table .city-cell {
@@ -807,7 +873,20 @@ def inject_styles():
             }
 
             .city-cell {
-                padding-left: 8px;
+                padding: 5px 6px !important;
+            }
+
+            .city-name {
+                font-size: 11px;
+            }
+
+            .city-meta {
+                font-size: 9px;
+            }
+
+            .cell-tooltip {
+                min-width: 170px;
+                font-size: 11px;
             }
 
             .bottom-panel {
@@ -1271,6 +1350,8 @@ def render_summary_cards(df):
 
 def set_date(date_key):
     st.session_state["selected_date"] = date_key
+    st.session_state["show_city_selector"] = False
+    st.session_state["replace_city_index"] = None
 
 
 def set_risk_filter(option):
@@ -1322,30 +1403,56 @@ def render_filter_bar():
 
 
 def render_heatmap_table(df):
-    """Render the 4 fixed metadata columns plus 24 hourly probability columns."""
+    """Render a compact city summary column plus 24 hourly probability columns."""
     if df.empty:
         st.warning("当前筛选条件下没有可展示城市，请调整日期或风险筛选。")
         return
 
     header_cells = [
-        "<th class='col-city'>城市</th>",
-        "<th class='col-weather'>代表天气</th>",
-        "<th class='col-max'>最高概率</th>",
-        "<th class='col-window'>高风险窗口</th>",
+        "<th class='col-city'>城市概况</th>",
     ]
     header_cells.extend(f"<th class='col-hour'>{hour}</th>" for hour in HOURS)
+    colgroup = "<colgroup><col class='col-city'>" + "".join("<col class='col-hour'>" for _ in HOURS) + "</colgroup>"
 
     body_rows = []
     for _, row in df.iterrows():
+        city = str(row["city"])
+        weather = str(row["weather"])
+        max_prob = int(row["max_prob"])
+        risk_window = str(row["risk_window"])
+        escaped_city = html.escape(city)
+        escaped_weather = html.escape(weather)
+        escaped_window = html.escape(risk_window)
         cells = [
-            f"<td class='city-cell'>{html.escape(row['city'])}</td>",
-            f"<td class='weather-cell'>{weather_icon(row['weather'])}　{html.escape(row['weather'])}</td>",
-            f"<td class='{max_class(row['max_prob'])}'>{int(row['max_prob'])}%</td>",
-            f"<td class='window-cell'>{html.escape(row['risk_window'])}</td>",
+            (
+                f"<td class='city-cell' aria-label='{escaped_city} {escaped_weather} 最高 {max_prob}% {escaped_window}'>"
+                "<div class='city-line'>"
+                f"<span class='city-name'>{escaped_city}</span>"
+                f"<span class='city-meta'>{weather_icon(weather)} {escaped_weather}</span>"
+                f"<span class='city-meta'>最高 <span class='{max_class(max_prob)}'>{max_prob}%</span></span>"
+                f"<span class='city-meta'>{escaped_window}</span>"
+                "</div>"
+                "</td>"
+            ),
         ]
         for hour in HOURS:
             value = int(row[hour])
-            cells.append(f"<td class='{risk_class(value)}'>{value}%</td>")
+            tooltip = html.escape(f"{city} {hour}:00｜{weather}｜降雨概率 {value}%")
+            tooltip_html = (
+                f"<span class='tooltip-title'>城市：{escaped_city}</span>"
+                f"<span class='tooltip-line'>时间：{hour}:00</span>"
+                f"<span class='tooltip-line'>天气：{weather_icon(weather)} {escaped_weather}</span>"
+                f"<span class='tooltip-line'>降雨概率：{value}%</span>"
+            )
+            cells.append(
+                (
+                    f"<td class='hour-cell {risk_class(value)}' data-tooltip='{tooltip}' "
+                    f"aria-label='{tooltip}' tabindex='0'>"
+                    f"<span class='hour-value'>{value}%</span>"
+                    f"<span class='cell-tooltip' role='tooltip'>{tooltip_html}</span>"
+                    "</td>"
+                )
+            )
         body_rows.append(f"<tr>{''.join(cells)}</tr>")
 
     table_html = (
@@ -1359,7 +1466,7 @@ def render_heatmap_table(df):
         "</div>"
         '<div class="table-wrap">'
         '<table class="rain-table">'
-        f"<thead><tr>{''.join(header_cells)}</tr></thead>"
+        f"{colgroup}<thead><tr>{''.join(header_cells)}</tr></thead>"
         f"<tbody>{''.join(body_rows)}</tbody>"
         "</table>"
         "</div>"
