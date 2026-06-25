@@ -377,7 +377,7 @@ def inject_styles():
         }
 
         .table-wrap {
-            overflow-x: auto;
+            overflow-x: visible;
             border: 1px solid #dce8f5;
             border-radius: 6px;
             background: white;
@@ -388,15 +388,15 @@ def inject_styles():
 
         .rain-table {
             width: 100%;
-            min-width: 1560px;
+            min-width: 0;
             border-collapse: separate;
             border-spacing: 0;
             table-layout: fixed;
-            font-size: 13px;
+            font-size: 12px;
         }
 
         .rain-table th {
-            height: 36px;
+            height: 32px;
             background: #f3f8fe;
             color: #143d72;
             border-bottom: 1px solid #dce8f5;
@@ -406,7 +406,7 @@ def inject_styles():
         }
 
         .rain-table td {
-            height: 31px;
+            height: 28px;
             text-align: center;
             border-bottom: 1px solid #edf2f8;
             border-right: 1px solid #edf2f8;
@@ -414,15 +414,47 @@ def inject_styles():
             white-space: nowrap;
         }
 
+        .rain-table td[data-tooltip] {
+            position: relative;
+        }
+
+        .rain-table td[data-tooltip]:focus {
+            outline: 2px solid rgba(47, 117, 241, 0.35);
+            outline-offset: -2px;
+        }
+
+        .rain-table td[data-tooltip]:hover::after,
+        .rain-table td[data-tooltip]:focus::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            left: 50%;
+            top: calc(100% + 8px);
+            transform: translateX(-50%);
+            z-index: 20;
+            min-width: 180px;
+            max-width: 240px;
+            padding: 8px 10px;
+            border: 1px solid #c7d9ee;
+            border-radius: 6px;
+            background: #ffffff;
+            box-shadow: 0 10px 24px rgba(24, 62, 112, 0.18);
+            color: #143d72;
+            font-size: 12px;
+            font-weight: 800;
+            line-height: 1.4;
+            white-space: normal;
+            pointer-events: none;
+        }
+
         .rain-table tr:last-child td {
             border-bottom: none;
         }
 
-        .col-city { width: 84px; }
-        .col-weather { width: 92px; }
-        .col-max { width: 86px; }
-        .col-window { width: 102px; }
-        .col-hour { width: 46px; }
+        .col-city { width: 72px; }
+        .col-weather { width: 82px; }
+        .col-max { width: 66px; }
+        .col-window { width: 78px; }
+        .col-hour { width: 32px; }
 
         .city-cell {
             color: #10386f;
@@ -447,14 +479,14 @@ def inject_styles():
         .rain-table .col-weather,
         .rain-table .weather-cell {
             position: sticky;
-            left: 84px;
+            left: 72px;
             z-index: 4;
         }
 
         .rain-table .col-max,
         .rain-table td:nth-child(3) {
             position: sticky;
-            left: 176px;
+            left: 154px;
             z-index: 4;
             background-clip: padding-box;
         }
@@ -462,7 +494,7 @@ def inject_styles():
         .rain-table .col-window,
         .rain-table .window-cell {
             position: sticky;
-            left: 262px;
+            left: 220px;
             z-index: 4;
         }
 
@@ -738,6 +770,10 @@ def inject_styles():
 
             .table-card {
                 padding: 10px 8px;
+            }
+
+            .table-wrap {
+                overflow-x: auto;
             }
 
             .table-heading {
@@ -1271,6 +1307,8 @@ def render_summary_cards(df):
 
 def set_date(date_key):
     st.session_state["selected_date"] = date_key
+    st.session_state["show_city_selector"] = False
+    st.session_state["replace_city_index"] = None
 
 
 def set_risk_filter(option):
@@ -1345,7 +1383,11 @@ def render_heatmap_table(df):
         ]
         for hour in HOURS:
             value = int(row[hour])
-            cells.append(f"<td class='{risk_class(value)}'>{value}%</td>")
+            title = f"{row['city']} {hour}:00｜{row['weather']}｜降雨概率 {value}%"
+            tooltip = html.escape(title)
+            cells.append(
+                f"<td class='{risk_class(value)}' title='{tooltip}' data-tooltip='{tooltip}' tabindex='0'>{value}%</td>"
+            )
         body_rows.append(f"<tr>{''.join(cells)}</tr>")
 
     table_html = (
